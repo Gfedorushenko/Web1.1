@@ -11,54 +11,59 @@ import java.util.concurrent.Executors;
 import java.util.List;
 
 public class Server {
-    List validPaths = List.of("/index.html", "/spring.svg", "/spring.png", "/resources.html", "/styles.css", "/app.js", "/links.html", "/forms.html", "/classic.html", "/events.html", "/events.js");
-    private final ExecutorService threadPool = Executors.newFixedThreadPool(64);
-    public static ConcurrentHashMap<Request, Handler> requests = new ConcurrentHashMap<>();
+    List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png", "/resources.html", "/styles.css", "/app.js", "/links.html", "/forms.html", "/classic.html", "/events.html", "/events.js");
+    private static final ConcurrentHashMap<String, Handler> requests = new ConcurrentHashMap<>();
+    private ExecutorService threadPool;
 
     public Server() {
-        for (int i = 0; i < validPaths.size(); i++) {
-            Request request = new Request("GET", (String) validPaths.get(i), "HTTP/1.1");
-            requests.put(request, new Handler() {
-                //@Override
-                public void handle(Request request, BufferedOutputStream responseStream) {
-                    getFile(request, responseStream);
-                }
-            });
-        }
+        addMyFiles();
     }
 
     public void listen(int port) {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
+            threadPool = Executors.newFixedThreadPool(4);
             while (true) {
-                threadPool.submit(new ConnectedClient(serverSocket.accept()));
+                try {
+                    final var socket = serverSocket.accept();
+                    threadPool.submit(() -> new ConnectedClient(socket).handle());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
-        } catch (IOException | InterruptedException e) {
-
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
     public void addHandler(String type, String path, Handler handler) {
-        Request request = new Request(type, path, "HTTP/1.1");
-        requests.put(request, handler);
+        requests.put(type + path, handler);
     }
 
-    private void getFile(Request request, BufferedOutputStream streamOut) {
-        final var filePath = Path.of(".", "public", request.getPath());
-        try {
-            final String mimeType = Files.probeContentType(filePath);
-            final var out = streamOut;
-            final var length = Files.size(filePath);
-            out.write((
-                    "HTTP/1.1 200 OK\r\n" +
-                            "Content-Type: " + mimeType + "\r\n" +
-                            "Content-Length: " + length + "\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n"
-            ).getBytes());
-            Files.copy(filePath, out);
-            out.flush();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+    public static Handler getRequest(String key) {
+        return requests.get(key);
+    }
+
+
+    private void addMyFiles() {
+        for (String validPath : validPaths) {
+            addHandler("GET", validPath,
+                    (request, out) -> sendFile(out, validPath));
         }
+    }
+
+
+    private void sendFile(BufferedOutputStream out, String fileName) throws IOException {
+        final var filePath = Path.of(".", "public", fileName);
+        final String mimeType = Files.probeContentType(filePath);
+        final var length = Files.size(filePath);
+        out.write((
+                "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: " + mimeType + "\r\n" +
+                        "Content-Length: " + length + "\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n"
+        ).getBytes());
+        Files.copy(filePath, out);
+        out.flush();
     }
 }

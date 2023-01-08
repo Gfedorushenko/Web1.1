@@ -2,67 +2,73 @@ package ru.netology;
 
 import java.io.*;
 import java.net.Socket;
-public class ConnectedClient extends Thread {
-    private Socket socket;
-    private BufferedReader in;
-    private BufferedOutputStream out;
 
-    public ConnectedClient(Socket socket) throws IOException, InterruptedException {
+public class ConnectedClient extends Thread {
+    private final Socket socket;
+    private  BufferedInputStream in;
+    private  BufferedOutputStream out;
+
+    public ConnectedClient(Socket socket) {
         this.socket = socket;
-        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        out = new BufferedOutputStream(socket.getOutputStream());
-        start();
+
     }
 
-    @Override
-    public void run() {
+    public void handle() {
         try {
-            final String requestLine = in.readLine();
-            if (requestLine==null){
+            System.out.println(Thread.currentThread().getName());
+            in = new BufferedInputStream(socket.getInputStream());
+            out = new BufferedOutputStream(socket.getOutputStream());
+            var request = Request.parse(in);
+            if (request == null) {
                 badRequest(out);
-            }else {
-                final var parts = requestLine.split(" ");
-                System.out.println(requestLine);
-                Request request = new Request(parts[0], parts[1], parts[2]);
-
-                if (parts.length != 3) {
-                    badRequest(out);
-                } else if (!Server.requests.keySet().contains(request)) {
-                    notFound(out);
-                } else {
-                    Server.requests.get(request).handle(request, out);
-                }
+                return;
+            }
+            var handler = Server.getRequest(request.getkey());
+            if (handler == null) {
+                notFound(out);
+                return;
+            }
+            try {
+                handler.handle(request, out);
+            } catch (Exception e) {
+                System.out.println(e.getMessage());
+                send500InternalServerError(out);
             }
         } catch (IOException e) {
             downService();
             throw new RuntimeException(e);
         }
     }
-    private static void badRequest(BufferedOutputStream streamOut) {
-        try (final var out = streamOut) {
-            out.write((
-                    "HTTP/1.1 400 Bad Request\r\n" +
-                            "Content-Length: 0\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n"
-            ).getBytes());
-            out.flush();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+
+    private static void badRequest(BufferedOutputStream out) throws IOException {
+        out.write((
+                "HTTP/1.1 400 Bad Request\r\n" +
+                        "Content-Length: 0\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n"
+        ).getBytes());
+        out.flush();
+
     }
-    private static void notFound(BufferedOutputStream streamOut) {
-        try (final var out = streamOut) {
-            out.write((
-                    "HTTP/1.1 404 Not Found\r\n" +
-                            "Content-Length: 0\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n"
-            ).getBytes());
-            out.flush();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+
+    private static void notFound(BufferedOutputStream out) throws IOException {
+        out.write((
+                "HTTP/1.1 404 Not Found\r\n" +
+                        "Content-Length: 0\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n"
+        ).getBytes());
+        out.flush();
+    }
+
+    private static void send500InternalServerError(BufferedOutputStream out) throws IOException {
+        out.write((
+                "HTTP/1.1 404 Not Found\r\n" +
+                        "Content-Length: 0\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n"
+        ).getBytes());
+        out.flush();
     }
 
     private void downService() {
