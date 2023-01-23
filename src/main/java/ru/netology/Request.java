@@ -18,16 +18,17 @@ public class Request implements RequestContext {
     private final String path;
     private final String protocol;
     private final String boundary;
-    private static List<NameValuePair> queryParams;
+    private List<NameValuePair> queryParams;
     private Map<String, List<String>> postParams;
 
-    public Request(String method, String path, String protocol, List<String> headers, String body, String boundary) {
+    public Request(String method, String path, String protocol, List<String> headers, String body, String boundary,List<NameValuePair> queryParams) {
         this.method = method;
         this.protocol = protocol;
         this.headers = headers;
         this.body = body;
         this.path = path;
         this.boundary = boundary;
+        this.queryParams=queryParams;
     }
 
     public String getBoundary() {
@@ -52,6 +53,10 @@ public class Request implements RequestContext {
 
     public void setPostParams(Map<String, List<String>> postParams) {
         this.postParams = postParams;
+    }
+
+    public void setQueryParams(List<NameValuePair> queryParams) {
+        this.queryParams = queryParams;
     }
 
     public List<String> getQueryParam(String name) {
@@ -120,6 +125,7 @@ public class Request implements RequestContext {
         System.out.println("Хэдеры: " + headers);
         String body = null;
         String boundary = null;
+        List<NameValuePair> queryParams=null;
         // для GET тела нет
         if (!method.equals("GET")) {
             in.skip(headersDelimiter.length);
@@ -137,9 +143,9 @@ public class Request implements RequestContext {
         if (requestLine[1].contains("?")) {
             final var query = requestLine[1].split("\\?");
             queryParams = URLEncodedUtils.parse(query[1], Charset.defaultCharset());
-            return new Request(requestLine[0], query[0], requestLine[2], headers, body, boundary);
+            return new Request(requestLine[0], query[0], requestLine[2], headers, body, boundary,queryParams);
         } else
-            return new Request(requestLine[0], requestLine[1], requestLine[2], headers, body, boundary);
+            return new Request(requestLine[0], requestLine[1], requestLine[2], headers, body, boundary,queryParams);
     }
 
     private static int indexOf(byte[] array, byte[] target, int start, int max) {
